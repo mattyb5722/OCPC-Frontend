@@ -26,6 +26,10 @@ import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
 import com.mashape.unirest.http.exceptions.UnirestException;
 */
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -115,7 +119,6 @@ public class MainActivity extends AppCompatActivity {
 
         File f = new File("Photo.jpg");
         myLocation.getLocation(this, locationResult);
-        //Todo: Make Post Request
         String url = "http://c50dfeb7.ngrok.io/image";
 
 
@@ -146,7 +149,21 @@ public class MainActivity extends AppCompatActivity {
                 if (!response.isSuccessful()) {
                     throw new IOException("Unexpected code " + response);
                 } else {
-                    System.out.println(response);
+                    ObjectMapper mapper = new ObjectMapper();
+                    Map<Coordinates, Building> result = mapper.readValue(response.body().string(),
+                            new TypeReference<HashMap<Coordinates, Building>>(){});
+                    int i = 0;
+                    TextView[] boxes = {text1, text2, text3};
+                    for(Map.Entry<Coordinates, Building> entry : result.entrySet()) {
+                        Coordinates c = entry.getKey();
+                        Building b = entry.getValue();
+                        make_box(boxes[i], "Hello", c.getTopLeft().getX(), c.getBottomRight().getX(),
+                                c.getTopLeft().getY(), c.getBottomRight().getY());
+                        i++;
+                        if(i > 2) {
+                            break;
+                        }
+                    }
                 }
             }
         });
