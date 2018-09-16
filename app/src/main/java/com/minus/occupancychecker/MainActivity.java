@@ -14,6 +14,7 @@ import android.provider.MediaStore;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
@@ -25,8 +26,30 @@ import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
 import com.mashape.unirest.http.exceptions.UnirestException;
 */
+import java.io.BufferedReader;
+import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.UnknownHostException;
+import java.util.HashMap;
+import java.util.Map;
+
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.HttpUrl;
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 
 import static android.app.PendingIntent.FLAG_ONE_SHOT;
 import static android.location.Criteria.ACCURACY_FINE;
@@ -46,11 +69,13 @@ public class MainActivity extends AppCompatActivity {
     Button reset;
     double lon;
     double lat;
-    MyLocation.LocationResult locationResult = new MyLocation.LocationResult(){
+    double bearing;
+    MyLocation.LocationResult locationResult = new MyLocation.LocationResult() {
         @Override
-        public void gotLocation(Location location){
+        public void gotLocation(Location location) {
             lon = location.getLongitude();
             lat = location.getLatitude();
+            bearing = location.getBearing();
         }
     };
     MyLocation myLocation = new MyLocation();
@@ -90,11 +115,49 @@ public class MainActivity extends AppCompatActivity {
 
         File f = new File("Photo.jpg");
         myLocation.getLocation(this, locationResult);
-        
+        //Todo: Make Post Request
+        String url = "http://c50dfeb7.ngrok.io/image";
+
+
+        final MediaType MEDIA_TYPE_PNG = MediaType.parse("image/png");
+
+        RequestBody req = new MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart("file", f.getName(), RequestBody.create(MEDIA_TYPE_PNG, f)).build();
+        HttpUrl.Builder httpBuilder = HttpUrl.parse(url).newBuilder();
+        httpBuilder.addQueryParameter("lat", String.valueOf(lat));
+        httpBuilder.addQueryParameter("lon", String.valueOf(lon));
+        httpBuilder.addQueryParameter("bearing", String.valueOf(bearing));
+
+        Request request = new Request.Builder()
+                .url(httpBuilder.build())
+                .post(req)
+                .build();
+        System.out.println(request.toString());
+
+        OkHttpClient client = new OkHttpClient();
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                e.printStackTrace();
+            }
+
+            @Override
+            public void onResponse(Call call, final Response response) throws IOException {
+                if (!response.isSuccessful()) {
+                    throw new IOException("Unexpected code " + response);
+                } else {
+                    System.out.println(response);
+                }
+            }
+        });
+
+
         make_box(text1, "hello", 1000, 1500, 1000, 1500);
 
         reset.setVisibility(View.VISIBLE);
-        reset.setOnClickListener(new View.OnClickListener() {
+        reset.setOnClickListener(new View.OnClickListener()
+
+        {
             public void onClick(View v) {
                 reset();
             }
@@ -114,5 +177,4 @@ public class MainActivity extends AppCompatActivity {
 
 
     }
-
 }
