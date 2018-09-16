@@ -7,9 +7,11 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
 import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationManager;
+import android.media.ExifInterface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -49,6 +51,7 @@ import java.net.UnknownHostException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -131,25 +134,34 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        //Update screen
-//        int targetW = 2560;
-//        int targetH = 1440;
         BitmapFactory.Options bmOptions = new BitmapFactory.Options();
-//        bmOptions.inJustDecodeBounds = true;
-//        BitmapFactory.decodeFile(mCurrentPhotoPath, bmOptions);
-//        int photoW = bmOptions.outWidth;
-//        int photoH = bmOptions.outHeight;
-//        int scaleFactor = Math.min(photoW / targetW, photoH / targetH);
-//        bmOptions.inJustDecodeBounds = false;
-//        bmOptions.inSampleSize = scaleFactor;
-//        bmOptions.inPurgeable = true;
         Bitmap bitmap = BitmapFactory.decodeFile(mCurrentPhotoPath, bmOptions);
+
+        try {
+            ExifInterface exif = new ExifInterface(mCurrentPhotoPath);
+            int orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 1);
+            Matrix matrix = new Matrix();
+            if (orientation == 6) {
+                matrix.postRotate(90);
+            }
+            else if (orientation == 3) {
+                matrix.postRotate(180);
+            }
+            else if (orientation == 8) {
+                matrix.postRotate(270);
+            }
+            bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true); // rotating bitmap
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+
         imageElement.setImageBitmap(bitmap);
 
         //Send file
         File f = new File(mCurrentPhotoPath);
         myLocation.getLocation(this, locationResult);
-        String url = "http://ad65f53b.ngrok.io/image";
+        String url = "http://3b5588c1.ngrok.io/image";
 
 
         final MediaType MEDIA_TYPE_JPG = MediaType.parse("image/jpg");
@@ -186,21 +198,19 @@ public class MainActivity extends AppCompatActivity {
                     System.out.println(responseBody);
                     ObjectMapper mapper = new ObjectMapper();
                     if(!(responseBody.equals("{}"))) {
-                        Map<Coordinates, Building> result = mapper.readValue(responseBody,
-                                new TypeReference<HashMap<Coordinates, Building>>() {
-                                });
-                        int i = 0;
-                        TextView[] boxes = {text1, text2, text3};
-                        for (Map.Entry<Coordinates, Building> entry : result.entrySet()) {
-                            Coordinates c = entry.getKey();
-                            Building b = entry.getValue();
-                            make_box(boxes[i], String.format("Occupancy: %d", b.getOccupancy()), c.getTopLeft().getX(), c.getBottomRight().getX(),
-                                    c.getTopLeft().getY(), c.getBottomRight().getY());
-                            i++;
-                            if (i > 2) {
-                                break;
+                        final List<Box> boxesList = mapper.readValue(responseBody, new TypeReference<List<Box>>(){});
+                        final TextView[] boxes = {text1, text2, text3};
+                        MainActivity.this.runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                for (int i = 0; i < Math.min(3, boxesList.size()); i++) {
+                                    Box b = boxesList.get(i);
+                                    make_box(boxes[i], String.format("Occupancy: %d",
+                                            b.getBuilding().getOccupancy()), b.getTopLeft().getX(),
+                                            b.getBottomRight().getX(), b.getTopLeft().getY(), b.getBottomRight().getY());
+                                }
                             }
-                        }
+                        });
                     }
                 }
             }

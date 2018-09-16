@@ -1,17 +1,17 @@
 package com.minus.occupancychecker;
 
-public class Coordinates {
-
+public class Box {
     private Point topLeft;
     private Point bottomRight;
+    private Building building;
 
-    public Coordinates(int x1, int y1, int x2, int y2) {
-        this.topLeft = new Point(x1, y1);
-        this.bottomRight = new Point(x2, y2);
+    public Box(Point topLeft, Point bottomRight, Building building) {
+        this.topLeft = topLeft;
+        this.bottomRight = bottomRight;
+        this.building = building;
     }
 
-    public Coordinates() {
-        //JSON Serialization
+    public Box() {
     }
 
     public Point getTopLeft() {
@@ -30,11 +30,11 @@ public class Coordinates {
         this.bottomRight = bottomRight;
     }
 
-    @Override
-    public String toString() {
-        return "Coordinates{" +
-                "topLeft=" + topLeft +
-                ", bottomRight=" + bottomRight +
-                '}';
+    public Building getBuilding() {
+        return building;
+    }
+
+    public void setBuilding(Building building) {
+        this.building = building;
     }
 }
