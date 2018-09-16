@@ -6,12 +6,16 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationManager;
+import android.net.Uri;
 import android.os.Build;
+import android.os.Environment;
 import android.provider.MediaStore;
 import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.FileProvider;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -42,8 +46,11 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.UnknownHostException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -105,27 +112,50 @@ public class MainActivity extends AppCompatActivity {
         Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
         // Ensure that there's a camera activity to handle the intent
         if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
-            // Create the File where the photo should go
-            File photoFile = new File(this.getFilesDir(), "Photo.jpg");
-            startActivityForResult(takePictureIntent, 1);
+            File photoFile = null;
+            try {
+                photoFile = createImageFile();
+            } catch (IOException ex) {
+                // Error occurred while creating the File
+            }
+            // Continue only if the File was successfully created
+            if (photoFile != null) {
+                Uri photoURI = FileProvider.getUriForFile(this,
+                        "com.example.android.fileprovider",
+                        photoFile);
+                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI);
+                startActivityForResult(takePictureIntent, 1);
+            }
         }
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        Bundle extras = data.getExtras();
-        Bitmap imageBitmap = (Bitmap) extras.get("data");
-        imageElement.setImageBitmap(imageBitmap);
+        //Update screen
+//        int targetW = 2560;
+//        int targetH = 1440;
+        BitmapFactory.Options bmOptions = new BitmapFactory.Options();
+//        bmOptions.inJustDecodeBounds = true;
+//        BitmapFactory.decodeFile(mCurrentPhotoPath, bmOptions);
+//        int photoW = bmOptions.outWidth;
+//        int photoH = bmOptions.outHeight;
+//        int scaleFactor = Math.min(photoW / targetW, photoH / targetH);
+//        bmOptions.inJustDecodeBounds = false;
+//        bmOptions.inSampleSize = scaleFactor;
+//        bmOptions.inPurgeable = true;
+        Bitmap bitmap = BitmapFactory.decodeFile(mCurrentPhotoPath, bmOptions);
+        imageElement.setImageBitmap(bitmap);
 
-        File f = new File("Photo.jpg");
+        //Send file
+        File f = new File(mCurrentPhotoPath);
         myLocation.getLocation(this, locationResult);
-        String url = "http://c50dfeb7.ngrok.io/image";
+        String url = "http://ad65f53b.ngrok.io/image";
 
 
-        final MediaType MEDIA_TYPE_PNG = MediaType.parse("image/png");
+        final MediaType MEDIA_TYPE_JPG = MediaType.parse("image/jpg");
 
         RequestBody req = new MultipartBody.Builder().setType(MultipartBody.FORM)
-                .addFormDataPart("file", f.getName(), RequestBody.create(MEDIA_TYPE_PNG, f)).build();
+                .addFormDataPart("file", f.getName(), RequestBody.create(MEDIA_TYPE_JPG, f)).build();
         HttpUrl.Builder httpBuilder = HttpUrl.parse(url).newBuilder();
         httpBuilder.addQueryParameter("lat", String.valueOf(lat));
         httpBuilder.addQueryParameter("lon", String.valueOf(lon));
@@ -137,7 +167,10 @@ public class MainActivity extends AppCompatActivity {
                 .build();
         System.out.println(request.toString());
 
-        OkHttpClient client = new OkHttpClient();
+        OkHttpClient client = new OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(30, TimeUnit.SECONDS).build();
         client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
@@ -149,27 +182,29 @@ public class MainActivity extends AppCompatActivity {
                 if (!response.isSuccessful()) {
                     throw new IOException("Unexpected code " + response);
                 } else {
+                    String responseBody = response.body().string();
+                    System.out.println(responseBody);
                     ObjectMapper mapper = new ObjectMapper();
-                    Map<Coordinates, Building> result = mapper.readValue(response.body().string(),
-                            new TypeReference<HashMap<Coordinates, Building>>(){});
-                    int i = 0;
-                    TextView[] boxes = {text1, text2, text3};
-                    for(Map.Entry<Coordinates, Building> entry : result.entrySet()) {
-                        Coordinates c = entry.getKey();
-                        Building b = entry.getValue();
-                        make_box(boxes[i], "Hello", c.getTopLeft().getX(), c.getBottomRight().getX(),
-                                c.getTopLeft().getY(), c.getBottomRight().getY());
-                        i++;
-                        if(i > 2) {
-                            break;
+                    if(!(responseBody.equals("{}"))) {
+                        Map<Coordinates, Building> result = mapper.readValue(responseBody,
+                                new TypeReference<HashMap<Coordinates, Building>>() {
+                                });
+                        int i = 0;
+                        TextView[] boxes = {text1, text2, text3};
+                        for (Map.Entry<Coordinates, Building> entry : result.entrySet()) {
+                            Coordinates c = entry.getKey();
+                            Building b = entry.getValue();
+                            make_box(boxes[i], String.format("Occupancy: %d", b.getOccupancy()), c.getTopLeft().getX(), c.getBottomRight().getX(),
+                                    c.getTopLeft().getY(), c.getBottomRight().getY());
+                            i++;
+                            if (i > 2) {
+                                break;
+                            }
                         }
                     }
                 }
             }
         });
-
-
-        make_box(text1, "hello", 1000, 1500, 1000, 1500);
 
         reset.setVisibility(View.VISIBLE);
         reset.setOnClickListener(new View.OnClickListener()
@@ -193,5 +228,23 @@ public class MainActivity extends AppCompatActivity {
         reset = (Button) findViewById(R.id.Reset);
 
 
+    }
+
+    String mCurrentPhotoPath;
+
+    private File createImageFile() throws IOException {
+        // Create an image file name
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        String imageFileName = "JPEG_" + timeStamp + "_";
+        File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+        File image = File.createTempFile(
+                imageFileName,  /* prefix */
+                ".jpg",         /* suffix */
+                storageDir      /* directory */
+        );
+
+        // Save a file: path for use with ACTION_VIEW intents
+        mCurrentPhotoPath = image.getAbsolutePath();
+        return image;
     }
 }
